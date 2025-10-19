@@ -1,0 +1,53 @@
+# --- LAMMPS Input Script: Al-Ni Melting Data Generation ---
+
+units           metal
+atom_style      atomic
+boundary        p p p
+dimension       3
+
+lattice         fcc 4.05
+region          box block 0 4 0 4 0 4
+create_box      2 box
+create_atoms    1 box
+
+set type 1 type/fraction 2 0.5 12345
+mass 1 26.9815
+mass 2 58.6934
+
+
+pair_style      eam/alloy
+pair_coeff      * * NiAl_Mishin.eam.alloy Al Ni
+
+neighbor        2.0 bin
+neigh_modify    delay 10 every 1 check yes
+
+thermo_style    custom step temp pe etotal press density
+thermo          500
+log             output/thermo_data.dat
+
+# Compute MSD for diffusion coefficient
+compute         msd_all all msd
+fix             1 all ave/time 100 10 1000 c_msd_all[4] file output/msd_data.dat mode scalar
+
+# Dump trajectory definition:
+# DUMP IS CORRECTLY PLACED HERE.
+dump            d1 all custom 1000 output/dump.alni id type x y z vx vy vz
+
+# **FIX:** Use 'first yes' to explicitly write the initial frame (Step 0)
+# and avoid the illegal 'write_dump' command.
+dump_modify     d1 sort id first yes
+
+
+# Equilibrate at 300 K
+velocity        all create 300.0 12345 mom yes rot yes dist gaussian
+fix             npt_eq all npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+run             20000
+unfix           npt_eq
+
+# Heating stage (300 K → 2000 K)
+fix             heat all npt temp 300.0 2000.0 0.1 iso 0.0 0.0 1.0
+run             100000
+unfix           heat
+
+# Final data save
+write_data      output/final.data
